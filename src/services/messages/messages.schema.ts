@@ -1,22 +1,30 @@
 // // For more information about this file see https://dove.feathersjs.com/guides/cli/service.schemas.html
-import { resolve } from "@feathersjs/schema";
+import { resolve, virtual } from "@feathersjs/schema";
 import type { Static } from "@feathersjs/typebox";
 import { getValidator, querySyntax, Type } from "@feathersjs/typebox";
 
 import type { HookContext } from "../../declarations";
 import { dataValidator, queryValidator } from "../../validators";
+import { userSchema } from "../users/users.schema";
 
 // Main data model schema
 export const messageSchema = Type.Object(
   {
     id: Type.Number(),
-    text: Type.String()
+    text: Type.String(),
+    createdAt: Type.Number(),
+    userId: Type.Number(),
+    user: Type.Ref(userSchema)
   },
   { $id: 'Message', additionalProperties: false }
 )
 export type Message = Static<typeof messageSchema>
 export const messageValidator = getValidator(messageSchema, dataValidator)
-export const messageResolver = resolve<Message, HookContext>({})
+export const messageResolver = resolve<Message, HookContext>({
+  user: virtual(async (message, context) => {
+    return context.app.service('users').get(message.userId)
+  })
+})
 
 export const messageExternalResolver = resolve<Message, HookContext>({})
 
@@ -26,7 +34,13 @@ export const messageDataSchema = Type.Pick(messageSchema, ['text'], {
 })
 export type MessageData = Static<typeof messageDataSchema>
 export const messageDataValidator = getValidator(messageDataSchema, dataValidator)
-export const messageDataResolver = resolve<Message, HookContext>({})
+export const messageDataResolver = resolve<Message, HookContext>({
+  userId: async (value, message, context) => {
+    return context.params.user.id
+  },
+  createdAt: async () => Date.now(),
+
+})
 
 // Schema for updating existing entries
 export const messagePatchSchema = Type.Partial(messageSchema, {
@@ -37,7 +51,7 @@ export const messagePatchValidator = getValidator(messagePatchSchema, dataValida
 export const messagePatchResolver = resolve<Message, HookContext>({})
 
 // Schema for allowed query properties
-export const messageQueryProperties = Type.Pick(messageSchema, ['id', 'text'])
+export const messageQueryProperties = Type.Pick(messageSchema, ['id', 'text', 'createdAt', 'userId'])
 export const messageQuerySchema = Type.Intersect(
   [
     querySyntax(messageQueryProperties),
@@ -48,4 +62,12 @@ export const messageQuerySchema = Type.Intersect(
 )
 export type MessageQuery = Static<typeof messageQuerySchema>
 export const messageQueryValidator = getValidator(messageQuerySchema, queryValidator)
-export const messageQueryResolver = resolve<MessageQuery, HookContext>({})
+export const messageQueryResolver = resolve<MessageQuery, HookContext>({
+  userId: async (value, user, context) => {
+    // A user only can edit his own messages
+    if (context.params.user && context.method !== 'find')
+      return context.params.user.id
+
+    return value
+  }
+})

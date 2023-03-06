@@ -6,13 +6,15 @@ import { passwordHash } from "@feathersjs/authentication-local";
 
 import type { HookContext } from "../../declarations";
 import { dataValidator, queryValidator } from "../../validators";
+import * as crypto from "crypto";
 
 // Main data model schema
 export const userSchema = Type.Object(
   {
     id: Type.Number(),
     email: Type.String(),
-    password: Type.Optional(Type.String())
+    password: Type.Optional(Type.String()),
+    avatar: Type.Optional(Type.String())
   },
   { $id: 'User', additionalProperties: false }
 )
@@ -26,13 +28,20 @@ export const userExternalResolver = resolve<User, HookContext>({
 })
 
 // Schema for creating new entries
-export const userDataSchema = Type.Pick(userSchema, ['email', 'password'], {
+export const userDataSchema = Type.Pick(userSchema, ['email', 'password', 'avatar'], {
   $id: 'UserData'
 })
 export type UserData = Static<typeof userDataSchema>
 export const userDataValidator = getValidator(userDataSchema, dataValidator)
 export const userDataResolver = resolve<User, HookContext>({
-  password: passwordHash({ strategy: 'local' })
+  password: passwordHash({ strategy: 'local' }),
+  avatar: async (value, user) => {
+    // If the user specified an avatar use it
+    if (value !== undefined) return value;
+
+    const emailHash = crypto.createHash('md5').update(user.email.toLowerCase()).digest('hex')
+    return `https://s.gravatar.com/avatar/${emailHash}?s=60`
+  }
 })
 
 // Schema for updating existing entries
@@ -58,11 +67,15 @@ export const userQuerySchema = Type.Intersect(
 export type UserQuery = Static<typeof userQuerySchema>
 export const userQueryValidator = getValidator(userQuerySchema, queryValidator)
 export const userQueryResolver = resolve<UserQuery, HookContext>({
-  // If there is a user (e.g. with authentication), they are only allowed to see their own data
   id: async (value, user, context) => {
+  // If there is a user (e.g. with authentication), they are only allowed to see their own data
     if (context.params.user) {
       return context.params.user.id
     }
+    // If the method isn't find (e.g. patch or remove), user is only allowed to use it for their own
+    if (context.method !== 'find')
+      return context.params.user.id
+
 
     return value
   }
