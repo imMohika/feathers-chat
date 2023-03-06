@@ -11,6 +11,7 @@ import { postgresql } from './postgresql'
 import { authentication } from './authentication'
 import { services } from './services/index'
 import { channels } from './channels'
+import { logRuntime } from './hooks/log-runtime'
 
 const app: Application = koa(feathers())
 
@@ -41,7 +42,7 @@ app.configure(services)
 // Register hooks that run on all service methods
 app.hooks({
   around: {
-    all: [logError]
+    all: [logError, logRuntime]
   },
   before: {},
   after: {},
